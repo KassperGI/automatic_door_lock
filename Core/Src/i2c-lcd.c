@@ -8,7 +8,7 @@
 #include "i2c-lcd.h"
 extern I2C_HandleTypeDef hi2c1;  // Uses the I2C1 port we just enabled
 
-#define SLAVE_ADDRESS_LCD 0x7E // 0x27 shifted left by 1
+#define SLAVE_ADDRESS_LCD 0x4E // 0x27 shifted left by 1
 
 void lcd_send_cmd (char cmd)
 {

@@ -56,7 +56,37 @@ static void MX_I2C1_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+char read_keypad(void)
+{
+    GPIO_TypeDef* row_ports[] = {GPIOB, GPIOB, GPIOB, GPIOB};
+    uint16_t row_pins[] = {GPIO_PIN_12, GPIO_PIN_13, GPIO_PIN_14, GPIO_PIN_15};
+    GPIO_TypeDef* col_ports[] = {GPIOA, GPIOA, GPIOA, GPIOA};
+    uint16_t col_pins[] = {GPIO_PIN_8, GPIO_PIN_9, GPIO_PIN_10, GPIO_PIN_15};
 
+    char keys[4][4] = {
+        {'1', '2', '3', 'A'},
+        {'4', '5', '6', 'B'},
+        {'7', '8', '9', 'C'},
+        {'*', '0', '#', 'D'}
+    };
+
+    for (int r = 0; r < 4; r++)
+    {
+        HAL_GPIO_WritePin(row_ports[r], row_pins[r], GPIO_PIN_RESET);
+
+        for (int c = 0; c < 4; c++)
+        {
+            if (HAL_GPIO_ReadPin(col_ports[c], col_pins[c]) == GPIO_PIN_RESET)
+            {
+                HAL_Delay(200); // Safe delay instead of an infinite trap loop
+                HAL_GPIO_WritePin(row_ports[r], row_pins[r], GPIO_PIN_SET);
+                return keys[r][c];
+            }
+        }
+        HAL_GPIO_WritePin(row_ports[r], row_pins[r], GPIO_PIN_SET);
+    }
+    return '\0';
+}
 /* USER CODE END 0 */
 
 /**
@@ -92,18 +122,38 @@ int main(void)
   /* USER CODE BEGIN 2 */
   lcd_init();
   lcd_send_string("DOOR LOCK SYSTEM");
-  lcd_put_cur(1, 0); // Move cursor to Row 1, Column 0
+  lcd_put_cur(1, 0);
   lcd_send_string("Status: LOCKED");
+
+  // Initialize all rows to HIGH
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_12 | GPIO_PIN_13 | GPIO_PIN_14 | GPIO_PIN_15, GPIO_PIN_SET);
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  while (1)
-  {
-	  HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
-	  HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_12);
-	  HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_1);
-	  HAL_Delay(500);
+  int blink_timer = 0;
+
+    while (1)
+    {
+        char key = read_keypad();
+
+        if (key != '\0')
+        {
+            lcd_put_cur(1, 0);
+            lcd_send_string("Key Pressed: ");
+            lcd_send_data(key);
+            lcd_send_string(" ");
+        }
+
+        // Only toggle the LED every 50 loops (500ms) so the human eye can see it
+        blink_timer++;
+        if (blink_timer >= 50)
+        {
+            HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
+            blink_timer = 0;
+        }
+
+        HAL_Delay(10);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -205,7 +255,7 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_12, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_12|GPIO_PIN_13|GPIO_PIN_14|GPIO_PIN_15, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : PC13 */
   GPIO_InitStruct.Pin = GPIO_PIN_13;
@@ -221,12 +271,18 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : PB12 */
-  GPIO_InitStruct.Pin = GPIO_PIN_12;
+  /*Configure GPIO pins : PB12 PB13 PB14 PB15 */
+  GPIO_InitStruct.Pin = GPIO_PIN_12|GPIO_PIN_13|GPIO_PIN_14|GPIO_PIN_15;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : PA8 PA9 PA10 PA15 */
+  GPIO_InitStruct.Pin = GPIO_PIN_8|GPIO_PIN_9|GPIO_PIN_10|GPIO_PIN_15;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
