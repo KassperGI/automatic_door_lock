@@ -166,63 +166,124 @@ int main(void)
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   int blink_timer = 0;
+  uint32_t unlock_timer = 0;
+  uint32_t sleep_timer = HAL_GetTick();
+  int is_asleep = 0;
 
     char current_pin[5] = "0000";
     char input_buffer[5] = "";
     int input_index = 0;
-    int system_state = 0;
+    int system_state = 0; // 0=Locked, 1=Unlocked, 2=ChangePIN, 3=VerifyPIN for Card, 4=ScanNewCard
+
+    // Database for up to 5 authorized cards. (Slot 0 is your master card).
+    uint8_t authorized_cards[5][4] = {
+        {0x5B, 0x93, 0x6A, 0x06},
+        {0}, {0}, {0}, {0}
+    };
+    int total_cards = 1;
 
     while (1)
     {
-    	// 1. Check for RFID Card First
-    	      uint8_t rfid_id[5];
-    	      if (MFRC522_Check(rfid_id) == 0)
-    	      {
-    	          // Your Master Card ID (5B 93 6A 06)
-    	          uint8_t master_card[4] = {0x5B, 0x93, 0x6A, 0x06};
+        // 1. Check for RFID Card First
+        uint8_t rfid_id[5];
+        if (MFRC522_Check(rfid_id) == 0)
+        {
+        	sleep_timer = HAL_GetTick(); // Reset the 15-second clock
+        	          if (is_asleep) {
+        	              is_asleep = 0;
+        	              uint8_t wake_cmd = 0x08;
+        	              HAL_I2C_Master_Transmit(&hi2c1, 0x4E, &wake_cmd, 1, 10);
+        	          }
+            // IF WE ARE IN "ADD CARD" MODE (State 4)
+            if (system_state == 4)
+            {
+                if (total_cards < 5)
+                {
+                    // Save the new card to the next empty slot
+                    authorized_cards[total_cards][0] = rfid_id[0];
+                    authorized_cards[total_cards][1] = rfid_id[1];
+                    authorized_cards[total_cards][2] = rfid_id[2];
+                    authorized_cards[total_cards][3] = rfid_id[3];
+                    total_cards++;
 
-    	          // Check if the scanned card matches the master card
-    	          if (rfid_id[0] == master_card[0] && rfid_id[1] == master_card[1] &&
-    	              rfid_id[2] == master_card[2] && rfid_id[3] == master_card[3])
-    	          {
-    	              system_state = 1; // Switch to UNLOCKED state
-    	              beep_success();
-    	              lcd_clear();
-    	              lcd_put_cur(0, 1);
-    	              lcd_send_string("DOOR UNLOCKED!");
-    	              lcd_put_cur(1, 0);
-    	              lcd_send_string("#:Lock *:NewPIN");
-    	          }
-    	          else
-    	          {
-    	              // An unknown card was scanned
-    	              beep_error();
-    	              lcd_clear();
-    	              lcd_put_cur(0, 1);
-    	              lcd_send_string("ACCESS DENIED!");
-    	              HAL_Delay(1500);
+                    beep_success();
+                    lcd_clear();
+                    lcd_put_cur(0, 2);
+                    lcd_send_string("CARD ADDED!");
+                }
+                else
+                {
+                    beep_error();
+                    lcd_clear();
+                    lcd_put_cur(0, 2);
+                    lcd_send_string("MEMORY FULL!");
+                }
 
-    	              // Reset the screen back to normal
-    	              if (system_state == 0) {
-    	                  lcd_clear();
-    	                  lcd_put_cur(0, 0);
-    	                  lcd_send_string("DOOR LOCKED");
-    	                  lcd_put_cur(1, 0);
-    	                  lcd_send_string("Enter PIN: ");
-    	              }
-    	          }
+                HAL_Delay(1500);
+                // Return to the Unlocked Menu
+                system_state = 1;
+                lcd_clear();
+                lcd_put_cur(0, 1);
+                lcd_send_string("DOOR UNLOCKED!");
+                lcd_put_cur(1, 0);
+                lcd_send_string("#:Lck *:PIN A:ID");
+            }
+            // IF WE ARE IN "LOCKED" MODE (State 0)
+            else if (system_state == 0)
+            {
+                int card_matched = 0;
+                // Check the scanned card against all saved cards
+                for (int i = 0; i < total_cards; i++)
+                {
+                    if (rfid_id[0] == authorized_cards[i][0] && rfid_id[1] == authorized_cards[i][1] &&
+                        rfid_id[2] == authorized_cards[i][2] && rfid_id[3] == authorized_cards[i][3])
+                    {
+                        card_matched = 1;
+                        break;
+                    }
+                }
 
-    	          // Clear any keypad input that was in progress to prevent glitches
-    	          input_index = 0;
-    	          memset(input_buffer, 0, sizeof(input_buffer));
+                if (card_matched == 1)
+                {
+                    system_state = 1; // Switch to UNLOCKED
+                    unlock_timer = HAL_GetTick();
+                    beep_success();
+                    lcd_clear();
+                    lcd_put_cur(0, 1);
+                    lcd_send_string("DOOR UNLOCKED!");
+                    lcd_put_cur(1, 0);
+                    lcd_send_string("#:Lck *:PIN A:ID"); // Updated menu text
+                }
+                else
+                {
+                    beep_error();
+                    lcd_clear();
+                    lcd_put_cur(0, 1);
+                    lcd_send_string("ACCESS DENIED!");
+                    HAL_Delay(1500);
 
-    	          // Pause so the scanner doesn't trigger 50 times in one second
-    	          HAL_Delay(1000);
-    	      }
+                    lcd_clear();
+                    lcd_put_cur(0, 0);
+                    lcd_send_string("DOOR LOCKED");
+                    lcd_put_cur(1, 0);
+                    lcd_send_string("Enter PIN: ");
+                }
+            }
+
+            input_index = 0;
+            memset(input_buffer, 0, sizeof(input_buffer));
+            HAL_Delay(1000);
+        }
         char key = read_keypad();
 
         if (key != '\0')
         {
+        	sleep_timer = HAL_GetTick(); // Reset the 15-second clock
+        	          if (is_asleep) {
+        	              is_asleep = 0;
+        	              uint8_t wake_cmd = 0x08;
+        	              HAL_I2C_Master_Transmit(&hi2c1, 0x4E, &wake_cmd, 1, 10);
+        	          }
             // ---------------------------------------------------------
             // STATE 0: DOOR IS LOCKED
             // ---------------------------------------------------------
@@ -246,6 +307,7 @@ int main(void)
                         if (strcmp(input_buffer, current_pin) == 0)
                         {
                             system_state = 1;
+                            unlock_timer = HAL_GetTick();
                             beep_success(); // <--- SUCCESS SOUND
                             lcd_clear();
                             lcd_put_cur(0, 1);
@@ -276,29 +338,41 @@ int main(void)
             // STATE 1: DOOR IS UNLOCKED
             // ---------------------------------------------------------
             else if (system_state == 1)
-            {
-                if (key == '#')
-                {
-                    beep_lock(); // <--- LOCK SOUND
-                    system_state = 0;
-                    input_index = 0;
-                    lcd_clear();
-                    lcd_put_cur(0, 0);
-                    lcd_send_string("DOOR LOCKED");
-                    lcd_put_cur(1, 0);
-                    lcd_send_string("Enter PIN: ");
-                }
-                else if (key == '*')
-                {
-                    beep_mode(); // <--- MODE CHANGE SOUND
-                    system_state = 2;
-                    input_index = 0;
-                    memset(input_buffer, 0, sizeof(input_buffer));
-                    lcd_clear();
-                    lcd_put_cur(0, 1);
-                    lcd_send_string("ENTER NEW PIN:");
-                }
-            }
+                      {
+                          if (key == '#') // Lock the door
+                          {
+                              beep_lock();
+                              system_state = 0;
+                              input_index = 0;
+                              lcd_clear();
+                              lcd_put_cur(0, 0);
+                              lcd_send_string("DOOR LOCKED");
+                              lcd_put_cur(1, 0);
+                              lcd_send_string("Enter PIN: ");
+                          }
+                          else if (key == '*') // Change the PIN
+                          {
+                              beep_mode();
+                              system_state = 2;
+                              input_index = 0;
+                              memset(input_buffer, 0, sizeof(input_buffer));
+                              lcd_clear();
+                              lcd_put_cur(0, 1);
+                              lcd_send_string("ENTER NEW PIN:");
+                          }
+                          else if (key == 'A') // Add a new RFID Card
+                          {
+                              beep_mode();
+                              system_state = 3;
+                              input_index = 0;
+                              memset(input_buffer, 0, sizeof(input_buffer));
+                              lcd_clear();
+                              lcd_put_cur(0, 0);
+                              lcd_send_string("ADD CARD MODE");
+                              lcd_put_cur(1, 0);
+                              lcd_send_string("Verify PIN: ");
+                          }
+                      }
             // ---------------------------------------------------------
             // STATE 2: CHANGING THE PIN
             // ---------------------------------------------------------
@@ -336,6 +410,81 @@ int main(void)
                     }
                 }
             }
+            // ---------------------------------------------------------
+            // STATE 3: VERIFY PIN TO ADD CARD
+            // ---------------------------------------------------------
+            else if (system_state == 3)
+            {
+                if (key >= '0' && key <= '9')
+                {
+                    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_RESET); HAL_Delay(50);
+                    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_SET);
+
+                    input_buffer[input_index] = key;
+                    lcd_put_cur(1, 12 + input_index);
+                    lcd_send_data('*'); // Hide the entry
+                    input_index++;
+
+                    if (input_index == 4)
+                    {
+                        input_buffer[4] = '\0';
+
+                        if (strcmp(input_buffer, current_pin) == 0)
+                        {
+                           // PIN Correct! Move to State 4 to await the card
+                           system_state = 4;
+                           beep_success();
+                           lcd_clear();
+                           lcd_put_cur(0, 2);
+                           lcd_send_string("PIN ACCEPTED");
+                           lcd_put_cur(1, 0);
+                           lcd_send_string("Scan New Card...");
+                        }
+                        else
+                        {
+                           // PIN Incorrect! Boot back to unlocked menu
+                           beep_error();
+                           lcd_clear();
+                           lcd_put_cur(0, 3);
+                           lcd_send_string("WRONG PIN!");
+                           HAL_Delay(1500);
+
+                           system_state = 1;
+                           lcd_clear();
+                           lcd_put_cur(0, 1);
+                           lcd_send_string("DOOR UNLOCKED!");
+                           lcd_put_cur(1, 0);
+                           lcd_send_string("#:Lck *:PIN A:ID");
+                        }
+                        input_index = 0;
+                        memset(input_buffer, 0, sizeof(input_buffer));
+                    }
+                }
+            }
+        }
+        // ---------------------------------------------------------
+        // AUTO-LOCK TIMER
+        // ---------------------------------------------------------
+        if (system_state == 1 && (HAL_GetTick() - unlock_timer >= 5000))
+        {
+            beep_lock(); // Make the locking sound
+            system_state = 0;
+            input_index = 0;
+            memset(input_buffer, 0, sizeof(input_buffer));
+            lcd_clear();
+            lcd_put_cur(0, 0);
+            lcd_send_string("DOOR LOCKED");
+            lcd_put_cur(1, 0);
+            lcd_send_string("Enter PIN: ");
+        }
+        // ---------------------------------------------------------
+        // SCREEN SLEEP TIMER (15 Seconds)
+        // ---------------------------------------------------------
+        if (!is_asleep && (HAL_GetTick() - sleep_timer >= 15000))
+        {
+            is_asleep = 1;
+            uint8_t sleep_cmd = 0x00;
+            HAL_I2C_Master_Transmit(&hi2c1, 0x4E, &sleep_cmd, 1, 10); // Cut backlight power
         }
 
         blink_timer++;
