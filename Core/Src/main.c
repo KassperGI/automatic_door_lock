@@ -22,6 +22,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "i2c-lcd.h"
+#include <string.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -56,6 +57,35 @@ static void MX_I2C1_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+void beep_success(void) {
+    // Two happy chirps
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_SET); HAL_Delay(100);
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_RESET); HAL_Delay(100);
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_SET); HAL_Delay(150);
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_RESET);
+}
+
+void beep_error(void) {
+    // Three rapid, harsh beeps
+    for(int i=0; i<3; i++) {
+        HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_SET); HAL_Delay(80);
+        HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_RESET); HAL_Delay(80);
+    }
+}
+
+void beep_lock(void) {
+    // One long, solid beep (like a deadbolt sliding)
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_SET); HAL_Delay(400);
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_RESET);
+}
+
+void beep_mode(void) {
+    // Two incredibly fast clicks
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_SET); HAL_Delay(40);
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_RESET); HAL_Delay(40);
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_SET); HAL_Delay(40);
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_RESET);
+}
 char read_keypad(void)
 {
     GPIO_TypeDef* row_ports[] = {GPIOB, GPIOB, GPIOB, GPIOB};
@@ -121,9 +151,9 @@ int main(void)
   MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
   lcd_init();
-  lcd_send_string("DOOR LOCK SYSTEM");
+  lcd_send_string("DOOR LOCKED");
   lcd_put_cur(1, 0);
-  lcd_send_string("Status: LOCKED");
+  lcd_send_string("Enter PIN: ");
 
   // Initialize all rows to HIGH
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_12 | GPIO_PIN_13 | GPIO_PIN_14 | GPIO_PIN_15, GPIO_PIN_SET);
@@ -133,26 +163,138 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   int blink_timer = 0;
 
+    char current_pin[5] = "0000";
+    char input_buffer[5] = "";
+    int input_index = 0;
+    int system_state = 0;
+
     while (1)
     {
         char key = read_keypad();
 
         if (key != '\0')
         {
-            lcd_put_cur(1, 0);
-            lcd_send_string("Key Pressed: ");
-            lcd_send_data(key);
-            lcd_send_string(" ");
+            // ---------------------------------------------------------
+            // STATE 0: DOOR IS LOCKED
+            // ---------------------------------------------------------
+            if (system_state == 0)
+            {
+                if (key >= '0' && key <= '9')
+                {
+                    // Standard key press beep
+                    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_SET); HAL_Delay(50);
+                    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_RESET);
+
+                    input_buffer[input_index] = key;
+                    lcd_put_cur(1, 11 + input_index);
+                    lcd_send_data('*');
+                    input_index++;
+
+                    if (input_index == 4)
+                    {
+                        input_buffer[4] = '\0';
+
+                        if (strcmp(input_buffer, current_pin) == 0)
+                        {
+                            system_state = 1;
+                            beep_success(); // <--- SUCCESS SOUND
+                            lcd_clear();
+                            lcd_put_cur(0, 1);
+                            lcd_send_string("DOOR UNLOCKED!");
+                            lcd_put_cur(1, 0);
+                            lcd_send_string("#:Lock *:NewPIN");
+                        }
+                        else
+                        {
+                            beep_error(); // <--- ERROR SOUND
+                            lcd_clear();
+                            lcd_put_cur(0, 3);
+                            lcd_send_string("WRONG PIN!");
+                            HAL_Delay(1500);
+
+                            lcd_clear();
+                            lcd_put_cur(0, 0);
+                            lcd_send_string("DOOR LOCKED");
+                            lcd_put_cur(1, 0);
+                            lcd_send_string("Enter PIN: ");
+                        }
+                        input_index = 0;
+                        memset(input_buffer, 0, sizeof(input_buffer));
+                    }
+                }
+            }
+            // ---------------------------------------------------------
+            // STATE 1: DOOR IS UNLOCKED
+            // ---------------------------------------------------------
+            else if (system_state == 1)
+            {
+                if (key == '#')
+                {
+                    beep_lock(); // <--- LOCK SOUND
+                    system_state = 0;
+                    input_index = 0;
+                    lcd_clear();
+                    lcd_put_cur(0, 0);
+                    lcd_send_string("DOOR LOCKED");
+                    lcd_put_cur(1, 0);
+                    lcd_send_string("Enter PIN: ");
+                }
+                else if (key == '*')
+                {
+                    beep_mode(); // <--- MODE CHANGE SOUND
+                    system_state = 2;
+                    input_index = 0;
+                    memset(input_buffer, 0, sizeof(input_buffer));
+                    lcd_clear();
+                    lcd_put_cur(0, 1);
+                    lcd_send_string("ENTER NEW PIN:");
+                }
+            }
+            // ---------------------------------------------------------
+            // STATE 2: CHANGING THE PIN
+            // ---------------------------------------------------------
+            else if (system_state == 2)
+            {
+                if (key >= '0' && key <= '9')
+                {
+                    // Standard key press beep
+                    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_SET); HAL_Delay(50);
+                    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_RESET);
+
+                    input_buffer[input_index] = key;
+                    lcd_put_cur(1, 6 + input_index);
+                    lcd_send_data(key);
+                    input_index++;
+
+                    if (input_index == 4)
+                    {
+                        input_buffer[4] = '\0';
+                        strcpy(current_pin, input_buffer);
+
+                        beep_success(); // <--- SUCCESS SOUND
+                        lcd_clear();
+                        lcd_put_cur(0, 1);
+                        lcd_send_string("PIN SAVED!");
+                        HAL_Delay(1500);
+
+                        system_state = 1;
+                        input_index = 0;
+                        lcd_clear();
+                        lcd_put_cur(0, 1);
+                        lcd_send_string("DOOR UNLOCKED!");
+                        lcd_put_cur(1, 0);
+                        lcd_send_string("#:Lock *:NewPIN");
+                    }
+                }
+            }
         }
 
-        // Only toggle the LED every 50 loops (500ms) so the human eye can see it
         blink_timer++;
         if (blink_timer >= 50)
         {
             HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
             blink_timer = 0;
         }
-
         HAL_Delay(10);
     /* USER CODE END WHILE */
 
