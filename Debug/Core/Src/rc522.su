@@ -1,0 +1,8 @@
+../Core/Src/rc522.c:10:6:MFRC522_WriteRegister	24	static
+../Core/Src/rc522.c:17:9:MFRC522_ReadRegister	32	static
+../Core/Src/rc522.c:26:6:MFRC522_SetBitMask	16	static
+../Core/Src/rc522.c:30:6:MFRC522_ClearBitMask	16	static
+../Core/Src/rc522.c:34:6:MFRC522_Init	8	static
+../Core/Src/rc522.c:46:9:MFRC522_ToCard	40	static
+../Core/Src/rc522.c:79:9:MFRC522_Check	32	static
+../Core/Src/rc522.c:98:9:MFRC522_Compare	24	static
