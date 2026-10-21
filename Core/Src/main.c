@@ -65,6 +65,51 @@ static void MX_TIM2_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+#define FLASH_ADDR 0x08007C00 // The absolute end of the 32KB C6 flash
+
+// Create a package for our security data
+typedef struct {
+    uint32_t memory_flag; // A special tag to know if we've saved before
+    char pin[8];
+    int total;
+    uint8_t cards[5][4];
+} SaveData;
+
+void load_from_flash(char* pin, int* total, uint8_t cards[5][4]) {
+    SaveData* saved = (SaveData*)FLASH_ADDR;
+    // If the memory flag matches, load the saved data!
+    if(saved->memory_flag == 0xABCD1234) {
+        strcpy(pin, saved->pin);
+        *total = saved->total;
+        memcpy(cards, saved->cards, 20);
+    }
+}
+
+void save_to_flash(char* pin, int total, uint8_t cards[5][4]) {
+    SaveData data;
+    data.memory_flag = 0xABCD1234;
+    strcpy(data.pin, pin);
+    data.total = total;
+    memcpy(data.cards, cards, 20);
+
+    HAL_FLASH_Unlock();
+
+    // Step 1: Erase the old page
+    FLASH_EraseInitTypeDef EraseInitStruct;
+    uint32_t PageError = 0;
+    EraseInitStruct.TypeErase = FLASH_TYPEERASE_PAGES;
+    EraseInitStruct.PageAddress = FLASH_ADDR;
+    EraseInitStruct.NbPages = 1;
+    HAL_FLASHEx_Erase(&EraseInitStruct, &PageError);
+
+    // Step 2: Write the new data package into the silicon
+    uint32_t* ptr = (uint32_t*)&data;
+    for(int i = 0; i < sizeof(SaveData)/4; i++) {
+        HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, FLASH_ADDR + (i*4), ptr[i]);
+    }
+
+    HAL_FLASH_Lock();
+}
 void beep_success(void) {
     HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_RESET); HAL_Delay(100);
     HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_SET); HAL_Delay(100);
@@ -188,6 +233,7 @@ int main(void)
         {0}, {0}, {0}, {0}
     };
     int total_cards = 1;
+    load_from_flash(current_pin, &total_cards, authorized_cards);
 
     while (1)
     {
@@ -213,6 +259,7 @@ int main(void)
                     authorized_cards[total_cards][3] = rfid_id[3];
                     total_cards++;
 
+                    save_to_flash(current_pin, total_cards, authorized_cards);
                     beep_success();
                     lcd_clear();
                     lcd_put_cur(0, 2);
@@ -404,7 +451,7 @@ int main(void)
                     {
                         input_buffer[4] = '\0';
                         strcpy(current_pin, input_buffer);
-
+                        save_to_flash(current_pin, total_cards, authorized_cards);
                         beep_success(); // <--- SUCCESS SOUND
                         lcd_clear();
                         lcd_put_cur(0, 1);
