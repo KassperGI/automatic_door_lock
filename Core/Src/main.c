@@ -202,17 +202,54 @@ int main(void)
   MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
   lcd_init();
+
+  // Initialize all rows to HIGH
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_12 | GPIO_PIN_13 | GPIO_PIN_14 | GPIO_PIN_15, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_SET); // Ensure Buzzer is OFF
+
+  // Start the servo motor PWM signal
+  HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
+  TIM2->CCR1 = 500; // Locked Position
+
+  // Initialize RFID
+  MFRC522_Init();
+
+  // =========================================================
+  // FACTORY RESET CHECK (Hold 'D' during startup)
+  // =========================================================
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_15, GPIO_PIN_RESET); // Pull Row 4 LOW
+  HAL_Delay(10); // Give the voltage a microsecond to settle
+
+  if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_15) == GPIO_PIN_RESET)
+  {
+      lcd_clear();
+      lcd_put_cur(0, 1);
+      lcd_send_string("FACTORY RESET");
+      lcd_put_cur(1, 2);
+      lcd_send_string("IN PROGRESS...");
+
+      // Wipe memory and restore default PIN and Master Card
+      uint8_t default_cards[5][4] = {{0x5B, 0x93, 0x6A, 0x06}, {0}, {0}, {0}, {0}};
+      save_to_flash("0000", 1, default_cards);
+
+      // Long 2-second beep for audio confirmation
+      HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_RESET);
+      HAL_Delay(2000);
+      HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_SET);
+
+      lcd_clear();
+      lcd_put_cur(0, 1);
+      lcd_send_string("RESET COMPLETE");
+      HAL_Delay(1500);
+  }
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_15, GPIO_PIN_SET); // Restore Row 4 HIGH
+
+  // Normal Boot Screen
+  lcd_clear();
+  lcd_put_cur(0, 0);
   lcd_send_string("DOOR LOCKED");
   lcd_put_cur(1, 0);
   lcd_send_string("Enter PIN: ");
-  // Initialize RFID
-  MFRC522_Init();
-  // Initialize all rows to HIGH
-  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_12 | GPIO_PIN_13 | GPIO_PIN_14 | GPIO_PIN_15, GPIO_PIN_SET);
-  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_SET);
-  // Start the servo motor PWM signal
-  HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
-  TIM2->CCR1 = 500; // 500 = 0 degrees (Locked Position)
   /* USER CODE END 2 */
 
   /* Infinite loop */
