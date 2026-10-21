@@ -392,35 +392,39 @@ int main(void)
 
           // IF THE ALARM IS TRIGGERED
           if (is_locked_out)
-          {
-              // Rapidly toggle buzzer for alarm sound
-              if (HAL_GetTick() - alarm_timer >= 100) {
-                  HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_1);
-                  alarm_timer = HAL_GetTick();
-              }
+                  {
+                      // 1. Force the screen to stay awake for the entire 30 seconds
+                      sleep_timer = HAL_GetTick();
+                      if (is_asleep) {
+                          is_asleep = 0;
+                          uint8_t wake_cmd = 0x08;
+                          HAL_I2C_Master_Transmit(&hi2c1, 0x4E, &wake_cmd, 1, 10);
+                      }
 
-              // Check if 30-second penalty is over
-              if (HAL_GetTick() - lockout_timer >= 30000) {
-                  is_locked_out = 0;
-                  failed_attempts = 0;
-                  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_SET); // Turn buzzer off
-                  lcd_clear();
-                  lcd_put_cur(0, 0);
-                  lcd_send_string("DOOR LOCKED");
-                  lcd_put_cur(1, 0);
-                  lcd_send_string("Enter PIN: ");
-              }
+                      // 2. Rapidly toggle buzzer for alarm sound
+                      if (HAL_GetTick() - alarm_timer >= 100) {
+                          HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_1);
+                          alarm_timer = HAL_GetTick();
+                      }
 
-              // Ignore keypad inputs but wake screen if they push buttons
-              if (key != '\0') {
-                  sleep_timer = HAL_GetTick();
-                  if (is_asleep) {
-                      is_asleep = 0;
-                      uint8_t wake_cmd = 0x08;
-                      HAL_I2C_Master_Transmit(&hi2c1, 0x4E, &wake_cmd, 1, 10);
+                      // 3. Check if 30-second penalty is over
+                      if (HAL_GetTick() - lockout_timer >= 30000) {
+                          is_locked_out = 0;
+                          failed_attempts = 0;
+                          HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_SET); // Turn buzzer off
+
+                          lcd_clear();
+                          lcd_put_cur(0, 0);
+                          lcd_send_string("DOOR LOCKED");
+                          lcd_put_cur(1, 0);
+                          lcd_send_string("Enter PIN: ");
+
+                          // Start a fresh 15-second sleep countdown for the normal menu
+                          sleep_timer = HAL_GetTick();
+                      }
+
+                      // (We no longer need the keypad check here since the screen is forced awake)
                   }
-              }
-          }
           // IF NORMAL OPERATION
           else if (key != '\0')
           {
