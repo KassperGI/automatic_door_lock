@@ -111,17 +111,17 @@ void save_to_flash(char* pin, int total, uint8_t cards[5][4]) {
     HAL_FLASH_Lock();
 }
 void beep_success(void) {
-    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_RESET); HAL_Delay(100);
-    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_SET); HAL_Delay(100);
-    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_RESET); HAL_Delay(150);
-    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_RESET); HAL_Delay(60);  // ON (Short)
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_SET);   HAL_Delay(60);  // OFF
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_RESET); HAL_Delay(250); // ON (Long)
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_SET);                   // OFF
 }
 
 void beep_error(void) {
-    for(int i=0; i<3; i++) {
-        HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_RESET); HAL_Delay(80);
-        HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_SET); HAL_Delay(80);
-    }
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_RESET); HAL_Delay(350); // ON (Heavy)
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_SET);   HAL_Delay(150); // OFF
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_RESET); HAL_Delay(350); // ON (Heavy)
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_SET);                   // OFF
 }
 
 void beep_lock(void) {
@@ -217,7 +217,7 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  int blink_timer = 0;
+  uint32_t led_timer = HAL_GetTick();
   uint32_t unlock_timer = 0;
   uint32_t sleep_timer = HAL_GetTick();
   int is_asleep = 0;
@@ -546,12 +546,15 @@ int main(void)
             HAL_I2C_Master_Transmit(&hi2c1, 0x4E, &sleep_cmd, 1, 10); // Cut backlight power
         }
 
-        blink_timer++;
-        if (blink_timer >= 50)
+        // ---------------------------------------------------------
+        // Heartbeat LED (Strict Time instead of Loop Counts)
+        // ---------------------------------------------------------
+        if (HAL_GetTick() - led_timer >= 500)
         {
             HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
-            blink_timer = 0;
+            led_timer = HAL_GetTick();
         }
+
         HAL_Delay(10);
     /* USER CODE END WHILE */
 
