@@ -47,6 +47,8 @@ I2C_HandleTypeDef hi2c1;
 
 SPI_HandleTypeDef hspi1;
 
+TIM_HandleTypeDef htim2;
+
 /* USER CODE BEGIN PV */
 
 /* USER CODE END PV */
@@ -56,6 +58,7 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_SPI1_Init(void);
+static void MX_TIM2_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -151,6 +154,7 @@ int main(void)
   MX_GPIO_Init();
   MX_I2C1_Init();
   MX_SPI1_Init();
+  MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
   lcd_init();
   lcd_send_string("DOOR LOCKED");
@@ -161,6 +165,9 @@ int main(void)
   // Initialize all rows to HIGH
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_12 | GPIO_PIN_13 | GPIO_PIN_14 | GPIO_PIN_15, GPIO_PIN_SET);
   HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_SET);
+  // Start the servo motor PWM signal
+  HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
+  TIM2->CCR1 = 500; // 500 = 0 degrees (Locked Position)
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -222,6 +229,7 @@ int main(void)
                 HAL_Delay(1500);
                 // Return to the Unlocked Menu
                 system_state = 1;
+                TIM2->CCR1 = 1500; // 1500 = 90 degrees (Unlocked Position)
                 lcd_clear();
                 lcd_put_cur(0, 1);
                 lcd_send_string("DOOR UNLOCKED!");
@@ -246,6 +254,7 @@ int main(void)
                 if (card_matched == 1)
                 {
                     system_state = 1; // Switch to UNLOCKED
+                    TIM2->CCR1 = 1500; // 1500 = 90 degrees (Unlocked Position)
                     unlock_timer = HAL_GetTick();
                     beep_success();
                     lcd_clear();
@@ -307,6 +316,7 @@ int main(void)
                         if (strcmp(input_buffer, current_pin) == 0)
                         {
                             system_state = 1;
+                            TIM2->CCR1 = 1500;
                             unlock_timer = HAL_GetTick();
                             beep_success(); // <--- SUCCESS SOUND
                             lcd_clear();
@@ -342,6 +352,7 @@ int main(void)
                           if (key == '#') // Lock the door
                           {
                               beep_lock();
+                              TIM2->CCR1 = 500;
                               system_state = 0;
                               input_index = 0;
                               lcd_clear();
@@ -468,6 +479,7 @@ int main(void)
         if (system_state == 1 && (HAL_GetTick() - unlock_timer >= 5000))
         {
             beep_lock(); // Make the locking sound
+            TIM2->CCR1 = 500; // Move back to Locked Position
             system_state = 0;
             input_index = 0;
             memset(input_buffer, 0, sizeof(input_buffer));
@@ -606,6 +618,55 @@ static void MX_SPI1_Init(void)
   /* USER CODE BEGIN SPI1_Init 2 */
 
   /* USER CODE END SPI1_Init 2 */
+
+}
+
+/**
+  * @brief TIM2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM2_Init(void)
+{
+
+  /* USER CODE BEGIN TIM2_Init 0 */
+
+  /* USER CODE END TIM2_Init 0 */
+
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+  TIM_OC_InitTypeDef sConfigOC = {0};
+
+  /* USER CODE BEGIN TIM2_Init 1 */
+
+  /* USER CODE END TIM2_Init 1 */
+  htim2.Instance = TIM2;
+  htim2.Init.Prescaler = 7;
+  htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim2.Init.Period = 19999;
+  htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_PWM_Init(&htim2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sConfigOC.OCMode = TIM_OCMODE_PWM1;
+  sConfigOC.Pulse = 0;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+  if (HAL_TIM_PWM_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM2_Init 2 */
+
+  /* USER CODE END TIM2_Init 2 */
+  HAL_TIM_MspPostInit(&htim2);
 
 }
 
