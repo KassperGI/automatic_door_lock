@@ -520,15 +520,17 @@ int main(void)
                       lcd_put_cur(1, 0);
                       lcd_send_string("Enter PIN: ");
                   }
-                  else if (key == '*')
+                  else if (key == '*') // Change the PIN
                   {
                       beep_mode();
-                      system_state = 2;
+                      system_state = 5; // <--- Go to verification state first
                       input_index = 0;
                       memset(input_buffer, 0, sizeof(input_buffer));
                       lcd_clear();
-                      lcd_put_cur(0, 1);
-                      lcd_send_string("ENTER NEW PIN:");
+                      lcd_put_cur(0, 0);
+                      lcd_send_string("CHANGE PIN MODE");
+                      lcd_put_cur(1, 0);
+                      lcd_send_string("Verify PIN: ");
                   }
                   else if (key == 'A')
                   {
@@ -665,20 +667,95 @@ int main(void)
                   }
               }
               else if (system_state == 4) // Awaiting Card
-              {
-                  if (key == 'C')
-                  {
-                      beep_mode();
-                      system_state = 1;
-                      unlock_timer = HAL_GetTick();
-                      lcd_clear();
-                      lcd_put_cur(0, 1);
-                      lcd_send_string("DOOR UNLOCKED!");
-                      lcd_put_cur(1, 0);
-                      lcd_send_string("#:Lck *:PIN A:ID");
-                  }
-              }
-          }
+                            {
+                                if (key == 'C')
+                                {
+                                    beep_mode();
+                                    system_state = 1;
+                                    unlock_timer = HAL_GetTick();
+                                    lcd_clear();
+                                    lcd_put_cur(0, 1);
+                                    lcd_send_string("DOOR UNLOCKED!");
+                                    lcd_put_cur(1, 0);
+                                    lcd_send_string("#:Lck *:PIN A:ID");
+                                }
+                            }
+               // ---------------------------------------------------------
+               // STATE 5: VERIFY PIN TO CHANGE PIN
+               // ---------------------------------------------------------
+               else if (system_state == 5)
+                            {
+                                if (key >= '0' && key <= '9')
+                                {
+                                    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_RESET); HAL_Delay(50);
+                                    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_SET);
+
+                                    input_buffer[input_index] = key;
+                                    lcd_put_cur(1, 12 + input_index);
+                                    lcd_send_data('*');
+                                    input_index++;
+
+                                    if (input_index == 4)
+                                    {
+                                        input_buffer[4] = '\0';
+
+                                        if (strcmp(input_buffer, current_pin) == 0)
+                                        {
+                                           // PIN Correct! Move to State 2 to enter the new PIN
+                                           system_state = 2;
+                                           beep_success();
+                                           lcd_clear();
+                                           lcd_put_cur(0, 1);
+                                           lcd_send_string("PIN ACCEPTED");
+                                           HAL_Delay(1000);
+
+                                           lcd_clear();
+                                           lcd_put_cur(0, 1);
+                                           lcd_send_string("ENTER NEW PIN:");
+                                        }
+                                        else
+                                        {
+                                           // PIN Incorrect! Boot back to unlocked menu
+                                           beep_error();
+                                           lcd_clear();
+                                           lcd_put_cur(0, 3);
+                                           lcd_send_string("WRONG PIN!");
+                                           HAL_Delay(1500);
+
+                                           system_state = 1;
+                                           unlock_timer = HAL_GetTick();
+                                           lcd_clear();
+                                           lcd_put_cur(0, 1);
+                                           lcd_send_string("DOOR UNLOCKED!");
+                                           lcd_put_cur(1, 0);
+                                           lcd_send_string("#:Lck *:PIN A:ID");
+                                        }
+                                        input_index = 0;
+                                        memset(input_buffer, 0, sizeof(input_buffer));
+                                    }
+                                }
+                                else if (key == 'C') // CANCEL / BACKSPACE
+                                {
+                                    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_RESET); HAL_Delay(50);
+                                    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_SET);
+
+                                    if (input_index > 0) {
+                                        input_index--;
+                                        input_buffer[input_index] = '\0';
+                                        lcd_put_cur(1, 12 + input_index);
+                                        lcd_send_string(" ");
+                                    } else {
+                                        system_state = 1;
+                                        unlock_timer = HAL_GetTick();
+                                        lcd_clear();
+                                        lcd_put_cur(0, 1);
+                                        lcd_send_string("DOOR UNLOCKED!");
+                                        lcd_put_cur(1, 0);
+                                        lcd_send_string("#:Lck *:PIN A:ID");
+                                    }
+                                }
+                            }
+                        }
 
           // =========================================================
           // 3. AUTO-LOCK TIMER

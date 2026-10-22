@@ -5,10 +5,10 @@
 ../Core/Src/main.c:127:6:beep_lock	1
 ../Core/Src/main.c:132:6:beep_mode	1
 ../Core/Src/main.c:138:6:read_keypad	4
-../Core/Src/main.c:175:5:main	54
-../Core/Src/main.c:731:6:SystemClock_Config	3
-../Core/Src/main.c:768:13:MX_I2C1_Init	2
-../Core/Src/main.c:802:13:MX_SPI1_Init	2
-../Core/Src/main.c:840:13:MX_TIM2_Init	4
-../Core/Src/main.c:889:13:MX_GPIO_Init	1
-../Core/Src/main.c:953:6:Error_Handler	1
+../Core/Src/main.c:175:5:main	61
+../Core/Src/main.c:808:6:SystemClock_Config	3
+../Core/Src/main.c:845:13:MX_I2C1_Init	2
+../Core/Src/main.c:879:13:MX_SPI1_Init	2
+../Core/Src/main.c:917:13:MX_TIM2_Init	4
+../Core/Src/main.c:966:13:MX_GPIO_Init	1
+../Core/Src/main.c:1030:6:Error_Handler	1
